@@ -31,21 +31,21 @@ jobs:
         # need to be downloaded before the "Run Codex" step because Codex's
         # default sandbox disables network access.
 
+      - name: Prepare Prompt File
+        run: |
+          cat .github/codex-prompt.md > .github/final-prompt.md
+          echo "" >> .github/final-prompt.md
+          echo "This is PR #${{ github.event.pull_request.number }} for ${{ github.repository }}." >> .github/final-prompt.md
+          echo "Changes to consider: git log --oneline ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" >> .github/final-prompt.md
+          echo "Title: ${{ github.event.pull_request.title }}" >> .github/final-prompt.md
+          echo "Body: ${{ github.event.pull_request.body }}" >> .github/final-prompt.md
+
       - name: Run Codex
         id: run_codex
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt: |
-            This is PR #${{ github.event.pull_request.number }} for ${{ github.repository }}.
-            Review ONLY the changes introduced by the PR, so consider:
-            git log --oneline ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}
-            Suggest any improvements, potential bugs, or issues. Be concise and specific in your feedback.
-            Pull request title and body:
-            ----
-            ${{ github.event.pull_request.title }}
-
-            ${{ github.event.pull_request.body }}
+          prompt-file: .github/final-prompt.md
 
   post_feedback:
     runs-on: ubuntu-latest
