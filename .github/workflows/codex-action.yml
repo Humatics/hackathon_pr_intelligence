@@ -1,11 +1,16 @@
 name: Perform a code review when a pull request is created.
 
 on:
-  pull_request:
-    types: [opened]
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: codex-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   codex:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -16,16 +21,17 @@ jobs:
         with:
           # Explicitly check out the PR's merge commit.
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 1
 
       - name: Pre-fetch base and head refs for the PR
         env:
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          # Pass GitHub expressions through env and quote shell expansions.
+          # Ensure both sides of the PR are available locally for git diff/log commands.
           git fetch --no-tags origin \
-            "$PR_BASE_REF" \
-            "+refs/pull/$PR_NUMBER/head"
+            "$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF" \
+            "+refs/pull/$PR_NUMBER/head:refs/remotes/pull/$PR_NUMBER/head"
 
         # If you want Codex to build and run code, install any dependencies that
         # need to be downloaded before the "Run Codex" step because Codex's
@@ -38,9 +44,16 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt: |
             This is PR #${{ github.event.pull_request.number }} for ${{ github.repository }}.
-            Review ONLY the changes introduced by the PR, so consider:
-            git log --oneline ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}
-            Suggest any improvements, potential bugs, or issues. Be concise and specific in your feedback.
+
+            Review ONLY the changes introduced by the PR.
+            Use git history and diffs for this exact range:
+            - git log --oneline ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}
+            - git diff --stat ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}
+            - git diff ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}
+
+            Suggest potential bugs, correctness issues, regressions, or missing tests.
+            Be concise and specific in your feedback.
+
             Pull request title and body:
             ----
             ${{ github.event.pull_request.title }}
